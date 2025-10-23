@@ -1,18 +1,17 @@
 /* CarRentalFull.java
    Fully functional single-file Swing Car Rental app (Enhanced)
    - Roles: admin, seller, user
-   - Admin – Manage all cars & users, see owner info
-   - Seller – Manage only their cars, add/edit/delete, right-click to update status
-   - User – Browse cars in a card-based UI, search cars, book available cars
-   - Card-based Browse panel with images, star ratings, and search
-   - Live updates across all panels on booking or edits
-   - Image upload supported (stored in images/)
-   - Future-proof for more roles, car details, and booking history
+   - Signup for user/seller
+   - Booking dialog with pickup info & total price
+   - Car features: fuelType, seats, transmission
+   - Image placeholder handling
+   - Auto-refresh after booking or edits
 */
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.event.ChangeEvent;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
@@ -21,6 +20,7 @@ import java.awt.image.BufferedImage;
 import java.io.*;
 import java.nio.file.*;
 import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
 
@@ -30,9 +30,15 @@ public class CarRentalFull {
     public static class Car {
         public String id, name, model, category, status, imagePath, ownerId;
         public double pricePerDay;
-        public Car(String id, String name, String model, double pricePerDay, String category, String status, String imagePath, String ownerId) {
+        public String fuelType;
+        public int seats;
+        public String transmission;
+
+        public Car(String id, String name, String model, double pricePerDay, String category, String status,
+                   String imagePath, String ownerId, String fuelType, int seats, String transmission) {
             this.id = id; this.name = name; this.model=model; this.pricePerDay=pricePerDay;
             this.category=category; this.status=status; this.imagePath=imagePath; this.ownerId=ownerId;
+            this.fuelType=fuelType; this.seats=seats; this.transmission=transmission;
         }
     }
 
@@ -53,12 +59,16 @@ public class CarRentalFull {
             users.add(new User("U002","user@demo","user123","user","Customer"));
             users.add(new User("U003","seller@demo","seller123","seller","+91-9876543210"));
 
-            cars.add(new Car("C001","Toyota Camry","Camry",3500,"Sedan","Available","images/Toyota_Camry.jpeg","U003"));
-            cars.add(new Car("C002","Honda Civic","Civic",3200,"Sedan","Available","images/Honda_Civic.jpeg","U003"));
+            cars.add(new Car("C001","Toyota Camry","Camry",3500,"Sedan","Available","images/Toyota_Camry.jpeg","U003","Petrol",5,"Automatic"));
+            cars.add(new Car("C002","Honda Civic","Civic",3200,"Sedan","Available","images/Honda_Civic.jpeg","U003","Petrol",5,"Automatic"));
         }
 
         public static Optional<User> authenticate(String username,String password,String role){
             return users.stream().filter(u->u.username.equalsIgnoreCase(username)&&u.password.equals(password)&&u.role.equalsIgnoreCase(role)).findFirst();
+        }
+
+        public static boolean usernameExists(String username){
+            return users.stream().anyMatch(u->u.username.equalsIgnoreCase(username));
         }
 
         public static List<User> fetchUsers(){return new ArrayList<>(users);}
@@ -68,31 +78,44 @@ public class CarRentalFull {
         public static void updateCar(Car updated){for(int i=0;i<cars.size();i++){if(cars.get(i).id.equals(updated.id)){cars.set(i,updated);return;}}}
         public static void deleteCar(String id){cars.removeIf(c->c.id.equals(id));}
 
+        public static void addUser(User u){users.add(u);}
+
         public static String nextCarId(){
             int max = cars.stream().mapToInt(c->{try{return Integer.parseInt(c.id.replaceAll("\\D+",""));}catch(Exception e){return 0;}}).max().orElse(0);
             return String.format("C%03d",max+1);
         }
 
+        public static String nextUserId(){
+            int max = users.stream().mapToInt(u->{try{return Integer.parseInt(u.id.replaceAll("\\D+",""));}catch(Exception e){return 0;}}).max().orElse(0);
+            return String.format("U%03d",max+1);
+        }
+
         public static User findUserById(String id){return users.stream().filter(u->u.id.equals(id)).findFirst().orElse(null);}
+        public static Car findCarById(String id){return cars.stream().filter(c->c.id.equals(id)).findFirst().orElse(null);}
     }
 
     // ---------------- UI Utils ----------------
     public static class UIUtils {
         public static final DecimalFormat MONEY = new DecimalFormat("#,###.##");
+        public static final String PLACEHOLDER_IMAGE = "images/placeholder.png";
+
         public static void ensureImagesFolder(){try{Files.createDirectories(Paths.get("images"));}catch(IOException e){System.err.println(e);}}
+
         public static String copyImageToStore(File sourceFile,String targetFileName)throws IOException{
             ensureImagesFolder();
             Path target = Paths.get("images",targetFileName);
             Files.copy(sourceFile.toPath(),target,StandardCopyOption.REPLACE_EXISTING);
             return target.toString().replace("\\","/");
         }
+
         public static ImageIcon loadScaledIcon(String imagePath,int w,int h){
-            if(imagePath==null) return null;
+            if(imagePath==null || !new File(imagePath).exists()) imagePath=PLACEHOLDER_IMAGE;
             try{
                 BufferedImage img = ImageIO.read(new File(imagePath));
                 return new ImageIcon(img.getScaledInstance(w,h,Image.SCALE_SMOOTH));
             }catch(IOException e){return null;}
         }
+
         public static JLabel makeHeader(String text){
             JLabel l = new JLabel(text,SwingConstants.CENTER);
             l.setFont(new Font("Segoe UI",Font.BOLD,20));
@@ -110,6 +133,7 @@ public class CarRentalFull {
         private JPanel cardPanel = new JPanel(cards);
         private LoginPanel loginPanel; private DashboardPanel dashboardPanel;
         private User currentUser;
+
         public MainFrame(){
             setTitle("Car Rental — Connected Roles");
             setSize(1100,700);
@@ -125,6 +149,7 @@ public class CarRentalFull {
             add(cardPanel);
             showLogin();
         }
+
         public void showLogin(){cards.show(cardPanel,"login");}
         public void showDashboard(User user){
             currentUser=user;
@@ -132,12 +157,15 @@ public class CarRentalFull {
             cards.show(cardPanel,"dashboard");
         }
         public User getCurrentUser(){return currentUser;}
+        public void refreshAll(){dashboardPanel.refreshAll();}
+        public DashboardPanel getDashboardPanel(){return dashboardPanel;}
     }
 
-    // ---------------- Login Panel ----------------
+    // ---------------- Login Panel with Signup ----------------
     public static class LoginPanel extends JPanel {
         private MainFrame parent;
         private JTextField txtUser; private JPasswordField txtPass; private JComboBox<String> roleBox;
+
         public LoginPanel(MainFrame parent){
             this.parent=parent;
             setLayout(new BorderLayout());
@@ -159,15 +187,18 @@ public class CarRentalFull {
             gbc.gridx=1; roleBox = new JComboBox<>(new String[]{"user","seller","admin"}); center.add(roleBox,gbc);
 
             gbc.gridx=0; gbc.gridy=3; gbc.gridwidth=2;
+            JPanel pbtn = new JPanel(); pbtn.setBackground(new Color(248,249,250));
             JButton btnLogin = new JButton("Login");
             btnLogin.setBackground(new Color(37,150,190)); btnLogin.setForeground(Color.WHITE); btnLogin.setFocusPainted(false);
             btnLogin.addActionListener(e->doLogin());
-            JPanel pbtn = new JPanel(); pbtn.setBackground(new Color(248,249,250)); pbtn.add(btnLogin); center.add(pbtn,gbc);
+            JButton btnSignup = new JButton("Create Account");
+            btnSignup.setBackground(new Color(37,180,90)); btnSignup.setForeground(Color.WHITE); btnSignup.setFocusPainted(false);
+            btnSignup.addActionListener(e->doSignup());
+            pbtn.add(btnLogin); pbtn.add(btnSignup); center.add(pbtn,gbc);
+
             add(center,BorderLayout.CENTER);
 
-            JLabel hint = new JLabel("<html><small>Demo login: admin@demo/admin123 | user@demo/user123 | seller@demo/seller123</small></html>",SwingConstants.CENTER);
-            hint.setBorder(new EmptyBorder(8,8,12,8));
-            add(hint,BorderLayout.SOUTH);
+          
         }
 
         private void doLogin(){
@@ -194,6 +225,32 @@ public class CarRentalFull {
                 }
             } else {
                 JOptionPane.showMessageDialog(this,"Invalid credentials or role.","Login Failed",JOptionPane.ERROR_MESSAGE);
+            }
+        }
+
+        private void doSignup(){
+            JTextField username = new JTextField();
+            JPasswordField password = new JPasswordField();
+            JComboBox<String> role = new JComboBox<>(new String[]{"user","seller"});
+            JTextField contact = new JTextField();
+
+            Object[] fields = {"Username:",username,"Password:",password,"Role:",role,"Contact:",contact};
+
+            int ans = JOptionPane.showConfirmDialog(this,fields,"Create Account",JOptionPane.OK_CANCEL_OPTION,JOptionPane.PLAIN_MESSAGE);
+            if(ans==JOptionPane.OK_OPTION){
+                String u=username.getText().trim();
+                String p=new String(password.getPassword());
+                String r=(String)role.getSelectedItem();
+                String c=contact.getText().trim();
+                if(u.isEmpty()||p.isEmpty()||c.isEmpty()){
+                    JOptionPane.showMessageDialog(this,"Fill all fields.","Validation",JOptionPane.WARNING_MESSAGE); return;
+                }
+                if(DataStore.usernameExists(u)){
+                    JOptionPane.showMessageDialog(this,"Username already exists!","Validation",JOptionPane.WARNING_MESSAGE); return;
+                }
+                User newUser = new User(DataStore.nextUserId(),u,p,r,c);
+                DataStore.addUser(newUser);
+                JOptionPane.showMessageDialog(this,"Account created! You can login now.","Success",JOptionPane.INFORMATION_MESSAGE);
             }
         }
     }
@@ -229,18 +286,18 @@ public class CarRentalFull {
                 case "seller": tabs.addTab("My Inventory",sellerPanel); break;
                 case "admin": tabs.addTab("Manage Cars",sellerPanel); tabs.addTab("Users",adminPanel); break;
             }
-            browsePanel.setCurrentUser(user); sellerPanel.setCurrentUser(user); 
+            browsePanel.setCurrentUser(user); sellerPanel.setCurrentUser(user);
             refreshAll();
         }
 
         public void refreshAll(){browsePanel.refresh(); sellerPanel.refresh(); adminPanel.refresh();}
     }
 
-    // ---------------- Card Browse Panel (User Booking Added) ----------------
+    // ---------------- Card Browse Panel ----------------
     public static class CardBrowsePanel extends JPanel {
         private MainFrame parent; private JPanel cardContainer; private JScrollPane scrollPane;
-        private JTextField txtSearch;
-        private User currentUser;
+        private JTextField txtSearch; private User currentUser;
+
         public CardBrowsePanel(MainFrame parent){
             this.parent=parent; setLayout(new BorderLayout()); setBorder(new EmptyBorder(10,10,10,10));
 
@@ -256,8 +313,7 @@ public class CarRentalFull {
             searchPanel.add(new JLabel("Search:"));
             txtSearch = new JTextField(20);
             searchPanel.add(txtSearch);
-            JButton btnSearch = new JButton("Go");
-            btnSearch.addActionListener(e -> refresh());
+            JButton btnSearch = new JButton("Go"); btnSearch.addActionListener(e -> refresh());
             searchPanel.add(btnSearch);
             topPanel.add(searchPanel,BorderLayout.SOUTH);
 
@@ -292,27 +348,25 @@ public class CarRentalFull {
                 for(int i=0;i<stars;i++) sb.append("★"); for(int i=stars;i<5;i++) sb.append("☆");
                 JLabel lblRating=new JLabel(sb.toString()); lblRating.setForeground(new Color(255,140,0)); info.add(lblRating);
 
-                info.add(new JLabel("Seats: 5 | Fuel: Petrol | Transmission: Auto"));
+                info.add(new JLabel("Seats: "+c.seats+" | Fuel: "+c.fuelType+" | Transmission: "+c.transmission));
                 info.add(new JLabel("Category: "+c.category));
                 info.add(new JLabel("Price/day: ₹"+UIUtils.MONEY.format(c.pricePerDay)));
                 JLabel lblStatus = new JLabel("Status: "+c.status);
                 if("Available".equalsIgnoreCase(c.status)) lblStatus.setForeground(new Color(0,128,0)); else lblStatus.setForeground(Color.RED);
                 info.add(lblStatus);
 
-                // Booking button for users
+                // Booking button
                 if(currentUser.role.equals("user")){
                     JButton bookBtn = new JButton("Book");
                     bookBtn.setEnabled("Available".equalsIgnoreCase(c.status));
                     bookBtn.addActionListener(e -> {
-                        int ans = JOptionPane.showConfirmDialog(this,"Confirm booking of "+c.name+"?","Booking",JOptionPane.YES_NO_OPTION);
-                        if(ans==JOptionPane.YES_OPTION){
-                            c.status="Rented"; DataStore.updateCar(c);
-                            ((DashboardPanel)parent.cardPanel.getComponent(1)).refreshAll();
-                            JOptionPane.showMessageDialog(this,"Booking confirmed!");
+                        if(!"Available".equalsIgnoreCase(c.status)){
+                            JOptionPane.showMessageDialog(this,"Car is not available for booking.","Booking Error",JOptionPane.ERROR_MESSAGE);
+                            return;
                         }
+                        new BookingDialog(parent,c).setVisible(true);
                     });
-                    info.add(Box.createVerticalStrut(6));
-                    info.add(bookBtn);
+                    info.add(Box.createVerticalStrut(6)); info.add(bookBtn);
                 }
 
                 card.add(info,BorderLayout.CENTER);
@@ -322,156 +376,132 @@ public class CarRentalFull {
         }
     }
 
+    // ---------------- Booking Dialog ----------------
+    public static class BookingDialog extends JDialog {
+        public BookingDialog(MainFrame parent,Car car){
+            super(parent,"Booking: "+car.name,true);
+            setSize(400,400); setLocationRelativeTo(parent);
+
+            JPanel panel = new JPanel(new GridLayout(0,2,6,6)); panel.setBorder(new EmptyBorder(12,12,12,12));
+
+            panel.add(new JLabel("Pickup Place:")); JTextField txtPlace=new JTextField(); panel.add(txtPlace);
+            panel.add(new JLabel("Pickup Date (yyyy-mm-dd):")); JTextField txtDate=new JTextField(new SimpleDateFormat("yyyy-MM-dd").format(new Date())); panel.add(txtDate);
+            panel.add(new JLabel("Pickup Time:")); JTextField txtTime=new JTextField("10:00 AM"); panel.add(txtTime);
+            panel.add(new JLabel("Number of Days:")); JSpinner spinDays=new JSpinner(new SpinnerNumberModel(1,1,30,1)); panel.add(spinDays);
+
+            JLabel lblPrice = new JLabel("Total Price: ₹0"); panel.add(lblPrice); panel.add(new JLabel("")); // placeholder
+
+            spinDays.addChangeListener((ChangeEvent e)->{
+                int days=(Integer)spinDays.getValue();
+                double total=car.pricePerDay*days;
+                lblPrice.setText("Total Price: ₹"+UIUtils.MONEY.format(total));
+            });
+
+            JButton btnConfirm=new JButton("Confirm Booking"); btnConfirm.addActionListener(e->{
+                if(txtPlace.getText().trim().isEmpty()){JOptionPane.showMessageDialog(this,"Enter pickup place."); return;}
+                try{
+                    int days=(Integer)spinDays.getValue();
+                    double total=car.pricePerDay*days;
+                    car.status="Rented";
+                    DataStore.updateCar(car);
+                    parent.refreshAll();
+                    JOptionPane.showMessageDialog(this,"Booking confirmed!\nTotal Price: ₹"+UIUtils.MONEY.format(total),"Success",JOptionPane.INFORMATION_MESSAGE);
+                    dispose();
+                }catch(Exception ex){ex.printStackTrace();}
+            });
+
+            JPanel bottom = new JPanel(); bottom.add(btnConfirm);
+            add(panel,BorderLayout.CENTER); add(bottom,BorderLayout.SOUTH);
+        }
+    }
+
     // ---------------- Seller Panel ----------------
     public static class SellerPanel extends JPanel {
-        private MainFrame parent; private User currentUser;
-        private DefaultTableModel tableModel; private JTable table;
-        public SellerPanel(MainFrame parent){
-            this.parent=parent; setLayout(new BorderLayout());
-            tableModel=new DefaultTableModel(new String[]{"ID","Name","Model","Price","Category","Status","Owner","Image"},0);
-            table=new JTable(tableModel);
-            JScrollPane sp=new JScrollPane(table); add(sp,BorderLayout.CENTER);
+        private MainFrame parent; private User currentUser; private JTable table; private DefaultTableModel model;
+        public SellerPanel(MainFrame parent){this.parent=parent; setLayout(new BorderLayout());}
 
-            JPanel btnPanel=new JPanel();
-            JButton add=new JButton("Add Car"); JButton edit=new JButton("Edit Car"); JButton del=new JButton("Delete Car");
-            btnPanel.add(add); btnPanel.add(edit); btnPanel.add(del); add(btnPanel,BorderLayout.SOUTH);
-
-            add.addActionListener(e->addCar());
-            edit.addActionListener(e->editCar());
-            del.addActionListener(e->deleteCar());
-
-            table.addMouseListener(new MouseAdapter(){
-                public void mousePressed(MouseEvent e){
-                    if(SwingUtilities.isRightMouseButton(e)){
-                        int row = table.rowAtPoint(e.getPoint());
-                        table.setRowSelectionInterval(row,row);
-                        JPopupMenu menu = new JPopupMenu();
-                        JMenuItem markAvailable = new JMenuItem("Mark Available");
-                        JMenuItem markRented = new JMenuItem("Mark Rented");
-                        JMenuItem markSold = new JMenuItem("Mark Sold");
-                        markAvailable.addActionListener(a -> updateStatus(row,"Available"));
-                        markRented.addActionListener(a -> updateStatus(row,"Rented"));
-                        markSold.addActionListener(a -> updateStatus(row,"Sold"));
-                        menu.add(markAvailable); menu.add(markRented); menu.add(markSold);
-                        menu.show(table,e.getX(),e.getY());
-                    }
-                }
-            });
-        }
-
-        public void setCurrentUser(User u){this.currentUser=u;}
+        public void setCurrentUser(User u){currentUser=u; refresh();}
 
         public void refresh(){
-            tableModel.setRowCount(0);
+            removeAll();
+            model = new DefaultTableModel(new Object[]{"ID","Name","Model","Price/Day","Seats","Fuel","Transmission","Status"},0){
+                public boolean isCellEditable(int row,int col){return false;}
+            };
+            table = new JTable(model);
             for(Car c:DataStore.fetchCars()){
                 if(currentUser.role.equals("seller") && !c.ownerId.equals(currentUser.id)) continue;
-                tableModel.addRow(new Object[]{c.id,c.name,c.model,c.pricePerDay,c.category,c.status,DataStore.findUserById(c.ownerId).username,c.imagePath});
+                model.addRow(new Object[]{c.id,c.name,c.model,c.pricePerDay,c.seats,c.fuelType,c.transmission,c.status});
             }
+            add(new JScrollPane(table),BorderLayout.CENTER);
+
+            JPanel btnPanel = new JPanel();
+            JButton addBtn=new JButton("Add Car"); addBtn.addActionListener(e->addOrEditCar(null));
+            JButton editBtn=new JButton("Edit Car"); editBtn.addActionListener(e->{int r=table.getSelectedRow(); if(r>=0)addOrEditCar(DataStore.findCarById((String)table.getValueAt(r,0)));});
+            JButton delBtn=new JButton("Delete Car"); delBtn.addActionListener(e->{int r=table.getSelectedRow(); if(r>=0){DataStore.deleteCar((String)table.getValueAt(r,0)); refresh();}});
+            btnPanel.add(addBtn); btnPanel.add(editBtn); btnPanel.add(delBtn);
+            add(btnPanel,BorderLayout.SOUTH);
+
+            revalidate(); repaint();
         }
 
-        private void updateStatus(int row, String status){
-            String id = (String)table.getValueAt(row,0);
-            Car c = DataStore.fetchCars().stream().filter(car->car.id.equals(id)).findFirst().orElse(null);
-            if(c!=null){ c.status = status; DataStore.updateCar(c); refresh(); ((DashboardPanel)parent.cardPanel.getComponent(1)).refreshAll();}
-        }
+        private void addOrEditCar(Car car){
+            JTextField name = new JTextField(car!=null?car.name:"");
+            JTextField model = new JTextField(car!=null?car.model:"");
+            JTextField price = new JTextField(car!=null?String.valueOf(car.pricePerDay):"0");
+            JTextField seats = new JTextField(car!=null?String.valueOf(car.seats):"5");
+            JTextField fuel = new JTextField(car!=null?car.fuelType:"Petrol");
+            JTextField trans = new JTextField(car!=null?car.transmission:"Automatic");
+            JComboBox<String> statusBox = new JComboBox<>(new String[]{"Available","Rented","Sold"});
+            if(car!=null) statusBox.setSelectedItem(car.status);
 
-        private void addCar(){CarDialog dlg=new CarDialog(parent,null,currentUser); dlg.setVisible(true); refresh();}
-        private void editCar(){int r=table.getSelectedRow(); if(r<0){JOptionPane.showMessageDialog(this,"Select a car to edit"); return;}
-            String id=(String)table.getValueAt(r,0); Car c = DataStore.fetchCars().stream().filter(car->car.id.equals(id)).findFirst().orElse(null);
-            if(c!=null){CarDialog dlg=new CarDialog(parent,c,currentUser); dlg.setVisible(true); refresh();}
-        }
-        private void deleteCar(){int r=table.getSelectedRow(); if(r<0){JOptionPane.showMessageDialog(this,"Select a car to delete"); return;}
-            String id=(String)table.getValueAt(r,0); int ans=JOptionPane.showConfirmDialog(this,"Delete this car?","Confirm",JOptionPane.YES_NO_OPTION);
-            if(ans==JOptionPane.YES_OPTION){DataStore.deleteCar(id); refresh(); ((DashboardPanel)parent.cardPanel.getComponent(1)).refreshAll();}
+            JButton imgBtn = new JButton("Upload Image"); JLabel imgLbl = new JLabel(car!=null?car.imagePath:""); imgLbl.setVisible(false);
+
+            imgBtn.addActionListener(e->{
+                JFileChooser fc = new JFileChooser();
+                fc.setFileFilter(new FileNameExtensionFilter("Images","jpg","jpeg","png"));
+                if(fc.showOpenDialog(this)==JFileChooser.APPROVE_OPTION){
+                    File f=fc.getSelectedFile(); try{imgLbl.setText(UIUtils.copyImageToStore(f,f.getName()));}catch(Exception ex){ex.printStackTrace();}
+                }
+            });
+
+            Object[] fields = {"Name",name,"Model",model,"Price/Day",price,"Seats",seats,"Fuel Type",fuel,"Transmission",trans,"Status",statusBox,imgBtn};
+
+            int ans = JOptionPane.showConfirmDialog(this,fields,car==null?"Add Car":"Edit Car",JOptionPane.OK_CANCEL_OPTION,JOptionPane.PLAIN_MESSAGE);
+            if(ans==JOptionPane.OK_OPTION){
+                try{
+                    double p = Double.parseDouble(price.getText());
+                    int s = Integer.parseInt(seats.getText());
+                    String imgPath = imgLbl.getText().isEmpty()?car!=null?car.imagePath:UIUtils.PLACEHOLDER_IMAGE:UIUtils.PLACEHOLDER_IMAGE;
+                    if(car==null){
+                        Car newCar = new Car(DataStore.nextCarId(),name.getText(),model.getText(),p,"Unknown",(String)statusBox.getSelectedItem(),imgPath,currentUser.id,fuel.getText(),s,trans.getText());
+                        DataStore.addCar(newCar);
+                    }else{
+                        car.name=name.getText(); car.model=model.getText(); car.pricePerDay=p; car.seats=s; car.fuelType=fuel.getText(); car.transmission=trans.getText(); car.status=(String)statusBox.getSelectedItem(); car.imagePath=imgPath;
+                        DataStore.updateCar(car);
+                    }
+                    refresh(); parent.refreshAll();
+                }catch(Exception ex){JOptionPane.showMessageDialog(this,"Invalid input!","Error",JOptionPane.ERROR_MESSAGE);}
+            }
         }
     }
 
     // ---------------- Admin Panel ----------------
-    public static class AdminPanel extends JPanel {
-        private DefaultTableModel tableModel; private JTable table;
+    public static class AdminPanel extends JPanel{
+        private JTable table; private DefaultTableModel model;
         public AdminPanel(MainFrame parent){
             setLayout(new BorderLayout());
-            tableModel=new DefaultTableModel(new String[]{"ID","Username","Role","Contact"},0);
-            table=new JTable(tableModel);
-            add(new JScrollPane(table),BorderLayout.CENTER);
         }
         public void refresh(){
-            tableModel.setRowCount(0);
-            for(User u:DataStore.fetchUsers()) tableModel.addRow(new Object[]{u.id,u.username,u.role,u.contact});
+            removeAll();
+            model = new DefaultTableModel(new Object[]{"ID","Username","Role","Contact"},0){public boolean isCellEditable(int r,int c){return false;}};
+            table = new JTable(model);
+            for(User u:DataStore.fetchUsers()){model.addRow(new Object[]{u.id,u.username,u.role,u.contact});}
+            add(new JScrollPane(table),BorderLayout.CENTER);
+            revalidate(); repaint();
         }
     }
 
-    // ---------------- Car Add/Edit Dialog ----------------
-    public static class CarDialog extends JDialog {
-        private JTextField txtName, txtModel, txtPrice, txtCategory, txtStatus;
-        private JLabel lblImage; private File selectedImageFile;
-        private Car car; private User user; private MainFrame parent;
-        public CarDialog(MainFrame parent, Car car, User user){
-            super(parent,true); this.parent=parent; this.car=car; this.user=user;
-            setTitle(car==null?"Add Car":"Edit Car"); setSize(400,500); setLocationRelativeTo(parent);
-            setLayout(new BorderLayout());
-
-            JPanel panel = new JPanel(new GridBagLayout()); panel.setBorder(new EmptyBorder(12,12,12,12));
-            GridBagConstraints gbc = new GridBagConstraints(); gbc.insets=new Insets(6,6,6,6); gbc.fill=GridBagConstraints.HORIZONTAL;
-
-            gbc.gridx=0; gbc.gridy=0; panel.add(new JLabel("Name:"),gbc); gbc.gridx=1; txtName=new JTextField(20); panel.add(txtName,gbc);
-            gbc.gridx=0; gbc.gridy=1; panel.add(new JLabel("Model:"),gbc); gbc.gridx=1; txtModel=new JTextField(20); panel.add(txtModel,gbc);
-            gbc.gridx=0; gbc.gridy=2; panel.add(new JLabel("Price/day:"),gbc); gbc.gridx=1; txtPrice=new JTextField(20); panel.add(txtPrice,gbc);
-            gbc.gridx=0; gbc.gridy=3; panel.add(new JLabel("Category:"),gbc); gbc.gridx=1; txtCategory=new JTextField(20); panel.add(txtCategory,gbc);
-            gbc.gridx=0; gbc.gridy=4; panel.add(new JLabel("Status:"),gbc); gbc.gridx=1; txtStatus=new JTextField(20); panel.add(txtStatus,gbc);
-
-            gbc.gridx=0; gbc.gridy=5; gbc.gridwidth=2;
-            lblImage=new JLabel("Click to select image",SwingConstants.CENTER);
-            lblImage.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-            lblImage.setPreferredSize(new Dimension(200,120)); panel.add(lblImage,gbc);
-            lblImage.addMouseListener(new MouseAdapter(){public void mouseClicked(MouseEvent e){chooseImage();}});
-
-            add(panel,BorderLayout.CENTER);
-
-            JButton save = new JButton("Save"); save.addActionListener(e->saveCar());
-            JPanel pbtn = new JPanel(); pbtn.add(save); add(pbtn,BorderLayout.SOUTH);
-
-            if(car!=null){
-                txtName.setText(car.name); txtModel.setText(car.model); txtPrice.setText(""+car.pricePerDay);
-                txtCategory.setText(car.category); txtStatus.setText(car.status);
-                lblImage.setIcon(UIUtils.loadScaledIcon(car.imagePath,200,120));
-            }
-        }
-
-        private void chooseImage(){
-            JFileChooser fc = new JFileChooser();
-            fc.setFileFilter(new FileNameExtensionFilter("Images","jpg","jpeg","png","gif"));
-            if(fc.showOpenDialog(this)==JFileChooser.APPROVE_OPTION) selectedImageFile=fc.getSelectedFile();
-            if(selectedImageFile!=null) lblImage.setIcon(UIUtils.loadScaledIcon(selectedImageFile.getAbsolutePath(),200,120));
-        }
-
-        private void saveCar(){
-            try{
-                String name=txtName.getText().trim(), model=txtModel.getText().trim();
-                double price=Double.parseDouble(txtPrice.getText().trim());
-                String category=txtCategory.getText().trim(), status=txtStatus.getText().trim();
-                String imgPath = car!=null?car.imagePath:null;
-                if(selectedImageFile!=null){
-                    String ext = selectedImageFile.getName().substring(selectedImageFile.getName().lastIndexOf("."));
-                    imgPath = UIUtils.copyImageToStore(selectedImageFile, DataStore.nextCarId()+ext);
-                }
-                if(car==null){
-                    Car newCar = new Car(DataStore.nextCarId(),name,model,price,category,status,imgPath,user.id);
-                    DataStore.addCar(newCar);
-                } else {
-                    car.name=name; car.model=model; car.pricePerDay=price; car.category=category; car.status=status; car.imagePath=imgPath;
-                    DataStore.updateCar(car);
-                }
-                ((DashboardPanel)parent.cardPanel.getComponent(1)).refreshAll();
-                dispose();
-            }catch(Exception e){JOptionPane.showMessageDialog(this,"Error saving car: "+e.getMessage());}
-        }
-    }
-
-    // ---------------- Main ----------------
-    public static void main(String[] args){SwingUtilities.invokeLater(()->{MainFrame f=new MainFrame(); f.setVisible(true);});}
-
-    // ---------------- WrapLayout for cards ----------------
+    // ---------------- WrapLayout (for cards) ----------------
     public static class WrapLayout extends FlowLayout{
         public WrapLayout(){super();}
         public WrapLayout(int align,int hgap,int vgap){super(align,hgap,vgap);}
@@ -479,21 +509,26 @@ public class CarRentalFull {
         public Dimension minimumLayoutSize(Container target){return layoutSize(target,false);}
         private Dimension layoutSize(Container target,boolean preferred){
             synchronized(target.getTreeLock()){
-                int maxWidth = target.getWidth();
-                if(maxWidth==0) maxWidth=Integer.MAX_VALUE;
-                int x=0,y=0,rowH=0;
+                int w=target.getWidth(); if(w==0) w=Integer.MAX_VALUE;
+                int hgap=getHgap(),vgap=getVgap(); Insets insets=target.getInsets(); int maxwidth=w-(insets.left+insets.right+hgap*2);
+                int x=0,y=vgap,rowh=0;
                 int nmembers=target.getComponentCount();
                 for(int i=0;i<nmembers;i++){
-                    Component c=target.getComponent(i);
-                    if(c.isVisible()){
-                        Dimension d = preferred?c.getPreferredSize():c.getMinimumSize();
-                        if(x+d.width>maxWidth){ x=0; y+=rowH+getVgap(); rowH=0;}
-                        x+=d.width+getHgap(); rowH=Math.max(rowH,d.height);
-                    }
+                    Component m=target.getComponent(i); if(!m.isVisible()) continue;
+                    Dimension d=preferred?m.getPreferredSize():m.getMinimumSize();
+                    if(x==0||(x+d.width)>maxwidth){x=0;y+=rowh+vgap; rowh=d.height;}else{rowh=Math.max(rowh,d.height);}
+                    x+=d.width+hgap;
                 }
-                y+=rowH; Insets in = target.getInsets(); y+=in.top+in.bottom;
-                return new Dimension(maxWidth,y);
+                y+=rowh+vgap; return new Dimension(w,y+insets.top+insets.bottom);
             }
         }
+    }
+
+    // ---------------- Main ----------------
+    public static void main(String[] args){
+        UIUtils.ensureImagesFolder();
+        SwingUtilities.invokeLater(()->{
+            MainFrame f = new MainFrame(); f.setVisible(true);
+        });
     }
 }
