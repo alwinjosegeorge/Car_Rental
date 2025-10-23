@@ -1,0 +1,491 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.util.ArrayList;
+
+// Main Class
+public class CarRentalSystemRoles {
+    // Store cars
+    static ArrayList<Car> cars = new ArrayList<>();
+    // Store bookings
+    static ArrayList<Booking> bookings = new ArrayList<>();
+
+    public static void main(String[] args) {
+        // Add some default cars
+        cars.add(new Car("Toyota Innova", "SUV", 3000));
+        cars.add(new Car("Maruti Swift", "Hatchback", 1500));
+        cars.add(new Car("Hyundai Verna", "Sedan", 2200));
+
+        new LoginFrame();
+    }
+}
+
+// ---------------- CAR CLASS ----------------
+class Car {
+    String model;
+    String type;
+    int pricePerDay;
+
+    public Car(String model, String type, int pricePerDay) {
+        this.model = model;
+        this.type = type;
+        this.pricePerDay = pricePerDay;
+    }
+
+    @Override
+    public String toString() {
+        return model + " (" + type + ") - ₹" + pricePerDay + "/day";
+    }
+}
+
+// ---------------- BOOKING CLASS ----------------
+class Booking {
+    String customerName;
+    Car car;
+
+    public Booking(String customerName, Car car) {
+        this.customerName = customerName;
+        this.car = car;
+    }
+
+    @Override
+    public String toString() {
+        return customerName + " booked " + car.model;
+    }
+}
+
+// ---------------- LOGIN PAGE ----------------
+class LoginFrame extends JFrame implements ActionListener {
+    JTextField userField;
+    JPasswordField passField;
+    JComboBox<String> roleBox;
+    JButton loginBtn, clearBtn;
+
+    public LoginFrame() {
+        setTitle("Car Rental System - Login");
+        setSize(400, 300);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(null);
+        setLocationRelativeTo(null);
+
+        JLabel title = new JLabel("Car Rental Dealership");
+        title.setFont(new Font("Arial", Font.BOLD, 18));
+        title.setBounds(80, 10, 250, 30);
+        add(title);
+
+        JLabel userLabel = new JLabel("Username:");
+        userLabel.setBounds(50, 60, 100, 25);
+        add(userLabel);
+
+        userField = new JTextField();
+        userField.setBounds(150, 60, 180, 25);
+        add(userField);
+
+        JLabel passLabel = new JLabel("Password:");
+        passLabel.setBounds(50, 100, 100, 25);
+        add(passLabel);
+
+        passField = new JPasswordField();
+        passField.setBounds(150, 100, 180, 25);
+        add(passField);
+
+        JLabel roleLabel = new JLabel("Role:");
+        roleLabel.setBounds(50, 140, 100, 25);
+        add(roleLabel);
+
+        String[] roles = {"Admin", "Seller", "Customer"};
+        roleBox = new JComboBox<>(roles);
+        roleBox.setBounds(150, 140, 180, 25);
+        add(roleBox);
+
+        loginBtn = new JButton("Login");
+        loginBtn.setBounds(80, 190, 100, 30);
+        loginBtn.addActionListener(this);
+        add(loginBtn);
+
+        clearBtn = new JButton("Clear");
+        clearBtn.setBounds(200, 190, 100, 30);
+        clearBtn.addActionListener(this);
+        add(clearBtn);
+
+        setVisible(true);
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == loginBtn) {
+            String user = userField.getText();
+            String pass = new String(passField.getPassword());
+            String role = (String) roleBox.getSelectedItem();
+
+            // Simple hardcoded credentials
+            if ((role.equals("Admin") && user.equals("admin") && pass.equals("1234")) ||
+                (role.equals("Seller") && user.equals("seller") && pass.equals("1234")) ||
+                (role.equals("Customer") && user.equals("customer") && pass.equals("1234"))) {
+                JOptionPane.showMessageDialog(this, "Login Successful!");
+                dispose();
+                if (role.equals("Admin")) new AdminMenu();
+                else if (role.equals("Seller")) new SellerMenu();
+                else new CustomerMenu(user);
+            } else {
+                JOptionPane.showMessageDialog(this, "Invalid credentials!");
+            }
+        } else if (e.getSource() == clearBtn) {
+            userField.setText("");
+            passField.setText("");
+        }
+    }
+}
+
+// ---------------- ADMIN MENU ----------------
+class AdminMenu extends JFrame implements ActionListener {
+    JButton viewCarsBtn, addCarBtn, viewBookingsBtn, logoutBtn;
+
+    public AdminMenu() {
+        setTitle("Admin Menu");
+        setSize(400, 300);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(null);
+        setLocationRelativeTo(null);
+
+        JLabel title = new JLabel("Admin Dashboard");
+        title.setFont(new Font("Arial", Font.BOLD, 16));
+        title.setBounds(120, 20, 200, 30);
+        add(title);
+
+        viewCarsBtn = new JButton("View All Cars");
+        viewCarsBtn.setBounds(100, 70, 200, 40);
+        viewCarsBtn.addActionListener(this);
+        add(viewCarsBtn);
+
+        addCarBtn = new JButton("Add New Car");
+        addCarBtn.setBounds(100, 120, 200, 40);
+        addCarBtn.addActionListener(this);
+        add(addCarBtn);
+
+        viewBookingsBtn = new JButton("View All Bookings");
+        viewBookingsBtn.setBounds(100, 170, 200, 40);
+        viewBookingsBtn.addActionListener(this);
+        add(viewBookingsBtn);
+
+        logoutBtn = new JButton("Logout");
+        logoutBtn.setBounds(100, 220, 200, 30);
+        logoutBtn.addActionListener(this);
+        add(logoutBtn);
+
+        setVisible(true);
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == viewCarsBtn) {
+            new ViewCarsAdmin();
+        } else if (e.getSource() == addCarBtn) {
+            new AddCarAdmin();
+        } else if (e.getSource() == viewBookingsBtn) {
+            new ViewBookingsAdmin();
+        } else if (e.getSource() == logoutBtn) {
+            dispose();
+            new LoginFrame();
+        }
+    }
+}
+
+// ---------------- SELLER MENU ----------------
+class SellerMenu extends JFrame implements ActionListener {
+    JButton viewCarsBtn, addCarBtn, logoutBtn;
+
+    public SellerMenu() {
+        setTitle("Seller Menu");
+        setSize(400, 250);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(null);
+        setLocationRelativeTo(null);
+
+        JLabel title = new JLabel("Seller Dashboard");
+        title.setFont(new Font("Arial", Font.BOLD, 16));
+        title.setBounds(120, 20, 200, 30);
+        add(title);
+
+        viewCarsBtn = new JButton("View Available Cars");
+        viewCarsBtn.setBounds(100, 70, 200, 40);
+        viewCarsBtn.addActionListener(this);
+        add(viewCarsBtn);
+
+        addCarBtn = new JButton("Add New Car");
+        addCarBtn.setBounds(100, 120, 200, 40);
+        addCarBtn.addActionListener(this);
+        add(addCarBtn);
+
+        logoutBtn = new JButton("Logout");
+        logoutBtn.setBounds(100, 170, 200, 30);
+        logoutBtn.addActionListener(this);
+        add(logoutBtn);
+
+        setVisible(true);
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == viewCarsBtn) {
+            new ViewCarsAdmin();
+        } else if (e.getSource() == addCarBtn) {
+            new AddCarAdmin();
+        } else if (e.getSource() == logoutBtn) {
+            dispose();
+            new LoginFrame();
+        }
+    }
+}
+
+// ---------------- CUSTOMER MENU ----------------
+class CustomerMenu extends JFrame implements ActionListener {
+    JButton viewCarsBtn, bookCarBtn, logoutBtn;
+    String username;
+
+    public CustomerMenu(String username) {
+        this.username = username;
+        setTitle("Customer Menu");
+        setSize(400, 250);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(null);
+        setLocationRelativeTo(null);
+
+        JLabel title = new JLabel("Customer Dashboard");
+        title.setFont(new Font("Arial", Font.BOLD, 16));
+        title.setBounds(100, 20, 250, 30);
+        add(title);
+
+        viewCarsBtn = new JButton("View Available Cars");
+        viewCarsBtn.setBounds(100, 70, 200, 40);
+        viewCarsBtn.addActionListener(this);
+        add(viewCarsBtn);
+
+        bookCarBtn = new JButton("Book a Car");
+        bookCarBtn.setBounds(100, 120, 200, 40);
+        bookCarBtn.addActionListener(this);
+        add(bookCarBtn);
+
+        logoutBtn = new JButton("Logout");
+        logoutBtn.setBounds(100, 170, 200, 30);
+        logoutBtn.addActionListener(this);
+        add(logoutBtn);
+
+        setVisible(true);
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == viewCarsBtn) {
+            new ViewCarsAdmin();
+        } else if (e.getSource() == bookCarBtn) {
+            new BookCarCustomer(username);
+        } else if (e.getSource() == logoutBtn) {
+            dispose();
+            new LoginFrame();
+        }
+    }
+}
+
+// ---------------- VIEW CARS (ADMIN/SELLER/CUSTOMER) ----------------
+class ViewCarsAdmin extends JFrame implements ActionListener {
+    JButton backBtn;
+
+    public ViewCarsAdmin() {
+        setTitle("Available Cars");
+        setSize(500, 400);
+        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        setLayout(null);
+        setLocationRelativeTo(null);
+
+        JLabel title = new JLabel("Available Cars");
+        title.setFont(new Font("Arial", Font.BOLD, 18));
+        title.setBounds(160, 20, 200, 30);
+        add(title);
+
+        String[][] carData = new String[CarRentalSystemRoles.cars.size()][3];
+        for (int i = 0; i < CarRentalSystemRoles.cars.size(); i++) {
+            Car c = CarRentalSystemRoles.cars.get(i);
+            carData[i][0] = c.model;
+            carData[i][1] = c.type;
+            carData[i][2] = "₹" + c.pricePerDay + "/day";
+        }
+        String[] columnNames = {"Model", "Type", "Price"};
+        JTable table = new JTable(carData, columnNames);
+        JScrollPane scroll = new JScrollPane(table);
+        scroll.setBounds(50, 70, 380, 200);
+        add(scroll);
+
+        backBtn = new JButton("Back");
+        backBtn.setBounds(180, 300, 120, 30);
+        backBtn.addActionListener(this);
+        add(backBtn);
+
+        setVisible(true);
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        dispose();
+    }
+}
+
+// ---------------- ADD CAR (ADMIN/SELLER) ----------------
+class AddCarAdmin extends JFrame implements ActionListener {
+    JTextField modelField, typeField, priceField;
+    JButton addBtn, backBtn;
+
+    public AddCarAdmin() {
+        setTitle("Add New Car");
+        setSize(400, 300);
+        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        setLayout(null);
+        setLocationRelativeTo(null);
+
+        JLabel title = new JLabel("Add New Car");
+        title.setFont(new Font("Arial", Font.BOLD, 16));
+        title.setBounds(120, 10, 200, 30);
+        add(title);
+
+        JLabel modelLabel = new JLabel("Model:");
+        modelLabel.setBounds(50, 50, 100, 25);
+        add(modelLabel);
+        modelField = new JTextField();
+        modelField.setBounds(150, 50, 180, 25);
+        add(modelField);
+
+        JLabel typeLabel = new JLabel("Type:");
+        typeLabel.setBounds(50, 90, 100, 25);
+        add(typeLabel);
+        typeField = new JTextField();
+        typeField.setBounds(150, 90, 180, 25);
+        add(typeField);
+
+        JLabel priceLabel = new JLabel("Price/day:");
+        priceLabel.setBounds(50, 130, 100, 25);
+        add(priceLabel);
+        priceField = new JTextField();
+        priceField.setBounds(150, 130, 180, 25);
+        add(priceField);
+
+        addBtn = new JButton("Add Car");
+        addBtn.setBounds(50, 180, 120, 30);
+        addBtn.addActionListener(this);
+        add(addBtn);
+
+        backBtn = new JButton("Back");
+        backBtn.setBounds(200, 180, 120, 30);
+        backBtn.addActionListener(this);
+        add(backBtn);
+
+        setVisible(true);
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == addBtn) {
+            String model = modelField.getText();
+            String type = typeField.getText();
+            int price = Integer.parseInt(priceField.getText());
+            CarRentalSystemRoles.cars.add(new Car(model, type, price));
+            JOptionPane.showMessageDialog(this, "Car added successfully!");
+        } else if (e.getSource() == backBtn) {
+            dispose();
+        }
+    }
+}
+
+// ---------------- VIEW BOOKINGS (ADMIN) ----------------
+class ViewBookingsAdmin extends JFrame implements ActionListener {
+    JButton backBtn;
+
+    public ViewBookingsAdmin() {
+        setTitle("All Bookings");
+        setSize(400, 300);
+        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        setLayout(null);
+        setLocationRelativeTo(null);
+
+        JLabel title = new JLabel("All Bookings");
+        title.setFont(new Font("Arial", Font.BOLD, 16));
+        title.setBounds(130, 10, 200, 30);
+        add(title);
+
+        String[][] bookingData = new String[CarRentalSystemRoles.bookings.size()][2];
+        for (int i = 0; i < CarRentalSystemRoles.bookings.size(); i++) {
+            Booking b = CarRentalSystemRoles.bookings.get(i);
+            bookingData[i][0] = b.customerName;
+            bookingData[i][1] = b.car.toString();
+        }
+        String[] columns = {"Customer", "Car"};
+        JTable table = new JTable(bookingData, columns);
+        JScrollPane scroll = new JScrollPane(table);
+        scroll.setBounds(30, 50, 340, 150);
+        add(scroll);
+
+        backBtn = new JButton("Back");
+        backBtn.setBounds(150, 210, 100, 30);
+        backBtn.addActionListener(this);
+        add(backBtn);
+
+        setVisible(true);
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        dispose();
+    }
+}
+
+// ---------------- BOOK CAR (CUSTOMER) ----------------
+class BookCarCustomer extends JFrame implements ActionListener {
+    JComboBox<String> carBox;
+    JButton bookBtn, backBtn;
+    String username;
+
+    public BookCarCustomer(String username) {
+        this.username = username;
+        setTitle("Book a Car");
+        setSize(400, 300);
+        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        setLayout(null);
+        setLocationRelativeTo(null);
+
+        JLabel title = new JLabel("Select a Car to Book");
+        title.setFont(new Font("Arial", Font.BOLD, 16));
+        title.setBounds(100, 20, 250, 30);
+        add(title);
+
+        String[] carOptions = new String[CarRentalSystemRoles.cars.size()];
+        for (int i = 0; i < CarRentalSystemRoles.cars.size(); i++) {
+            carOptions[i] = CarRentalSystemRoles.cars.get(i).toString();
+        }
+        carBox = new JComboBox<>(carOptions);
+        carBox.setBounds(50, 80, 300, 25);
+        add(carBox);
+
+        bookBtn = new JButton("Book Car");
+        bookBtn.setBounds(50, 130, 120, 30);
+        bookBtn.addActionListener(this);
+        add(bookBtn);
+
+        backBtn = new JButton("Back");
+        backBtn.setBounds(230, 130, 120, 30);
+        backBtn.addActionListener(this);
+        add(backBtn);
+
+        setVisible(true);
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == bookBtn) {
+            int index = carBox.getSelectedIndex();
+            Car selectedCar = CarRentalSystemRoles.cars.get(index);
+            CarRentalSystemRoles.bookings.add(new Booking(username, selectedCar));
+            JOptionPane.showMessageDialog(this, "Car booked successfully!");
+        } else if (e.getSource() == backBtn) {
+            dispose();
+        }
+    }
+}
