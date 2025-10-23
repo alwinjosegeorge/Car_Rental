@@ -1,11 +1,13 @@
 /* CarRentalFull.java
-   Fully functional single-file Swing Car Rental app
+   Fully functional single-file Swing Car Rental app (Enhanced)
    - Roles: admin, seller, user
-   - Admin: manage all cars & users
-   - Seller: manage own cars
-   - User: browse cars (card-based)
-   - Car image upload supported
-   - In-memory datastore + images stored in images/
+   - Admin – Manage all cars & users, see owner info
+   - Seller – Manage only their cars, add/edit/delete, right-click to update status
+   - User – Browse cars in a card-based UI, search cars, book available cars
+   - Card-based Browse panel with images, star ratings, and search
+   - Live updates across all panels on booking or edits
+   - Image upload supported (stored in images/)
+   - Future-proof for more roles, car details, and booking history
 */
 
 import javax.imageio.ImageIO;
@@ -28,7 +30,6 @@ public class CarRentalFull {
     public static class Car {
         public String id, name, model, category, status, imagePath, ownerId;
         public double pricePerDay;
-
         public Car(String id, String name, String model, double pricePerDay, String category, String status, String imagePath, String ownerId) {
             this.id = id; this.name = name; this.model=model; this.pricePerDay=pricePerDay;
             this.category=category; this.status=status; this.imagePath=imagePath; this.ownerId=ownerId;
@@ -168,13 +169,32 @@ public class CarRentalFull {
             hint.setBorder(new EmptyBorder(8,8,12,8));
             add(hint,BorderLayout.SOUTH);
         }
+
         private void doLogin(){
-            String u=txtUser.getText().trim(); String p=new String(txtPass.getPassword());
-            String role=(String)roleBox.getSelectedItem();
-            if(u.isEmpty()||p.isEmpty()){JOptionPane.showMessageDialog(this,"Enter credentials.","Validation",JOptionPane.WARNING_MESSAGE); return;}
+            String u = txtUser.getText().trim();
+            String p = new String(txtPass.getPassword());
+            String role = (String)roleBox.getSelectedItem();
+
+            if(u.isEmpty() || p.isEmpty()){
+                JOptionPane.showMessageDialog(this,"Enter credentials.","Validation",JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
             Optional<User> found = DataStore.authenticate(u,p,role);
-            if(found.isPresent()){parent.showDashboard(found.get()); txtPass.setText("");}
-            else{JOptionPane.showMessageDialog(this,"Invalid credentials or role.","Login Failed",JOptionPane.ERROR_MESSAGE);}
+            if(found.isPresent()){
+                // Fake OTP system
+                String otp = JOptionPane.showInputDialog(this,
+                        "We are facing an SMS issue.\nPlease use 910296 as your OTP:",
+                        "OTP Verification", JOptionPane.INFORMATION_MESSAGE);
+                if(otp != null && otp.equals("910296")){
+                    parent.showDashboard(found.get());
+                    txtPass.setText("");
+                } else {
+                    JOptionPane.showMessageDialog(this,"Invalid OTP! Login failed.","Login Failed",JOptionPane.ERROR_MESSAGE);
+                }
+            } else {
+                JOptionPane.showMessageDialog(this,"Invalid credentials or role.","Login Failed",JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
 
@@ -209,13 +229,18 @@ public class CarRentalFull {
                 case "seller": tabs.addTab("My Inventory",sellerPanel); break;
                 case "admin": tabs.addTab("Manage Cars",sellerPanel); tabs.addTab("Users",adminPanel); break;
             }
-            browsePanel.refresh(); sellerPanel.setCurrentUser(user); sellerPanel.refresh(); adminPanel.refresh();
+            browsePanel.setCurrentUser(user); sellerPanel.setCurrentUser(user); 
+            refreshAll();
         }
+
+        public void refreshAll(){browsePanel.refresh(); sellerPanel.refresh(); adminPanel.refresh();}
     }
 
-    // ---------------- Card Browse Panel ----------------
+    // ---------------- Card Browse Panel (User Booking Added) ----------------
     public static class CardBrowsePanel extends JPanel {
         private MainFrame parent; private JPanel cardContainer; private JScrollPane scrollPane;
+        private JTextField txtSearch;
+        private User currentUser;
         public CardBrowsePanel(MainFrame parent){
             this.parent=parent; setLayout(new BorderLayout()); setBorder(new EmptyBorder(10,10,10,10));
 
@@ -223,7 +248,20 @@ public class CarRentalFull {
             header.setFont(new Font("Segoe UI",Font.BOLD,22)); header.setOpaque(true);
             header.setBackground(new Color(18,120,225)); header.setForeground(Color.WHITE);
             header.setBorder(new EmptyBorder(12,12,12,12));
-            add(header,BorderLayout.NORTH);
+
+            JPanel topPanel = new JPanel(new BorderLayout(4,4));
+            topPanel.add(header,BorderLayout.NORTH);
+
+            JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+            searchPanel.add(new JLabel("Search:"));
+            txtSearch = new JTextField(20);
+            searchPanel.add(txtSearch);
+            JButton btnSearch = new JButton("Go");
+            btnSearch.addActionListener(e -> refresh());
+            searchPanel.add(btnSearch);
+            topPanel.add(searchPanel,BorderLayout.SOUTH);
+
+            add(topPanel,BorderLayout.NORTH);
 
             cardContainer = new JPanel(); cardContainer.setLayout(new WrapLayout(FlowLayout.LEFT,16,16));
             scrollPane = new JScrollPane(cardContainer); scrollPane.getVerticalScrollBar().setUnitIncrement(16);
@@ -231,11 +269,16 @@ public class CarRentalFull {
             add(scrollPane,BorderLayout.CENTER);
         }
 
+        public void setCurrentUser(User u){currentUser=u;}
+
         public void refresh(){
+            String query = txtSearch.getText().trim().toLowerCase();
             cardContainer.removeAll();
             for(Car c:DataStore.fetchCars()){
+                if(!query.isEmpty() && !(c.name.toLowerCase().contains(query) || c.category.toLowerCase().contains(query))) continue;
+
                 JPanel card = new JPanel(new BorderLayout(4,4));
-                card.setPreferredSize(new Dimension(240,320));
+                card.setPreferredSize(new Dimension(240,360));
                 card.setBackground(Color.WHITE); card.setBorder(BorderFactory.createLineBorder(Color.LIGHT_GRAY,1,true));
 
                 JLabel imgLabel = new JLabel(); imgLabel.setHorizontalAlignment(SwingConstants.CENTER);
@@ -256,6 +299,22 @@ public class CarRentalFull {
                 if("Available".equalsIgnoreCase(c.status)) lblStatus.setForeground(new Color(0,128,0)); else lblStatus.setForeground(Color.RED);
                 info.add(lblStatus);
 
+                // Booking button for users
+                if(currentUser.role.equals("user")){
+                    JButton bookBtn = new JButton("Book");
+                    bookBtn.setEnabled("Available".equalsIgnoreCase(c.status));
+                    bookBtn.addActionListener(e -> {
+                        int ans = JOptionPane.showConfirmDialog(this,"Confirm booking of "+c.name+"?","Booking",JOptionPane.YES_NO_OPTION);
+                        if(ans==JOptionPane.YES_OPTION){
+                            c.status="Rented"; DataStore.updateCar(c);
+                            ((DashboardPanel)parent.cardPanel.getComponent(1)).refreshAll();
+                            JOptionPane.showMessageDialog(this,"Booking confirmed!");
+                        }
+                    });
+                    info.add(Box.createVerticalStrut(6));
+                    info.add(bookBtn);
+                }
+
                 card.add(info,BorderLayout.CENTER);
                 cardContainer.add(card);
             }
@@ -263,7 +322,7 @@ public class CarRentalFull {
         }
     }
 
-    // ---------------- Seller Panel (Add/Update/Delete Cars) ----------------
+    // ---------------- Seller Panel ----------------
     public static class SellerPanel extends JPanel {
         private MainFrame parent; private User currentUser;
         private DefaultTableModel tableModel; private JTable table;
@@ -280,6 +339,24 @@ public class CarRentalFull {
             add.addActionListener(e->addCar());
             edit.addActionListener(e->editCar());
             del.addActionListener(e->deleteCar());
+
+            table.addMouseListener(new MouseAdapter(){
+                public void mousePressed(MouseEvent e){
+                    if(SwingUtilities.isRightMouseButton(e)){
+                        int row = table.rowAtPoint(e.getPoint());
+                        table.setRowSelectionInterval(row,row);
+                        JPopupMenu menu = new JPopupMenu();
+                        JMenuItem markAvailable = new JMenuItem("Mark Available");
+                        JMenuItem markRented = new JMenuItem("Mark Rented");
+                        JMenuItem markSold = new JMenuItem("Mark Sold");
+                        markAvailable.addActionListener(a -> updateStatus(row,"Available"));
+                        markRented.addActionListener(a -> updateStatus(row,"Rented"));
+                        markSold.addActionListener(a -> updateStatus(row,"Sold"));
+                        menu.add(markAvailable); menu.add(markRented); menu.add(markSold);
+                        menu.show(table,e.getX(),e.getY());
+                    }
+                }
+            });
         }
 
         public void setCurrentUser(User u){this.currentUser=u;}
@@ -292,94 +369,109 @@ public class CarRentalFull {
             }
         }
 
+        private void updateStatus(int row, String status){
+            String id = (String)table.getValueAt(row,0);
+            Car c = DataStore.fetchCars().stream().filter(car->car.id.equals(id)).findFirst().orElse(null);
+            if(c!=null){ c.status = status; DataStore.updateCar(c); refresh(); ((DashboardPanel)parent.cardPanel.getComponent(1)).refreshAll();}
+        }
+
         private void addCar(){CarDialog dlg=new CarDialog(parent,null,currentUser); dlg.setVisible(true); refresh();}
-        private void editCar(){int r=table.getSelectedRow(); if(r<0){JOptionPane.showMessageDialog(this,"Select a car to edit."); return;}
-            String id=(String)table.getValueAt(r,0); Car c=DataStore.fetchCars().stream().filter(car->car.id.equals(id)).findFirst().orElse(null);
-            if(c==null) return; CarDialog dlg=new CarDialog(parent,c,currentUser); dlg.setVisible(true); refresh();
+        private void editCar(){int r=table.getSelectedRow(); if(r<0){JOptionPane.showMessageDialog(this,"Select a car to edit"); return;}
+            String id=(String)table.getValueAt(r,0); Car c = DataStore.fetchCars().stream().filter(car->car.id.equals(id)).findFirst().orElse(null);
+            if(c!=null){CarDialog dlg=new CarDialog(parent,c,currentUser); dlg.setVisible(true); refresh();}
         }
-        private void deleteCar(){int r=table.getSelectedRow(); if(r<0){JOptionPane.showMessageDialog(this,"Select a car to delete."); return;}
+        private void deleteCar(){int r=table.getSelectedRow(); if(r<0){JOptionPane.showMessageDialog(this,"Select a car to delete"); return;}
             String id=(String)table.getValueAt(r,0); int ans=JOptionPane.showConfirmDialog(this,"Delete this car?","Confirm",JOptionPane.YES_NO_OPTION);
-            if(ans==JOptionPane.YES_OPTION){DataStore.deleteCar(id); refresh();}
+            if(ans==JOptionPane.YES_OPTION){DataStore.deleteCar(id); refresh(); ((DashboardPanel)parent.cardPanel.getComponent(1)).refreshAll();}
         }
     }
 
-    // ---------------- Car Add/Edit Dialog ----------------
-    public static class CarDialog extends JDialog {
-        private JTextField txtName,txtModel,txtPrice,txtCategory; private JComboBox<String> cmbStatus;
-        private JLabel lblImage; private File selectedImage=null;
-        private Car car; private User currentUser;
-
-        public CarDialog(JFrame parent, Car car, User currentUser){
-            super(parent,true); this.car=car; this.currentUser=currentUser;
-            setTitle(car==null?"Add Car":"Edit Car"); setSize(400,500); setLocationRelativeTo(parent); setLayout(new BorderLayout());
-
-            JPanel p=new JPanel(new GridBagLayout()); p.setBorder(new EmptyBorder(12,12,12,12));
-            GridBagConstraints gbc=new GridBagConstraints(); gbc.insets=new Insets(8,8,8,8); gbc.fill=GridBagConstraints.HORIZONTAL;
-
-            gbc.gridx=0; gbc.gridy=0; p.add(new JLabel("Name:"),gbc); gbc.gridx=1; txtName=new JTextField(20); p.add(txtName,gbc);
-            gbc.gridx=0; gbc.gridy=1; p.add(new JLabel("Model:"),gbc); gbc.gridx=1; txtModel=new JTextField(20); p.add(txtModel,gbc);
-            gbc.gridx=0; gbc.gridy=2; p.add(new JLabel("Price/day:"),gbc); gbc.gridx=1; txtPrice=new JTextField(20); p.add(txtPrice,gbc);
-            gbc.gridx=0; gbc.gridy=3; p.add(new JLabel("Category:"),gbc); gbc.gridx=1; txtCategory=new JTextField(20); p.add(txtCategory,gbc);
-            gbc.gridx=0; gbc.gridy=4; p.add(new JLabel("Status:"),gbc); gbc.gridx=1; cmbStatus=new JComboBox<>(new String[]{"Available","Rented","Sold"}); p.add(cmbStatus,gbc);
-
-            gbc.gridx=0; gbc.gridy=5; gbc.gridwidth=2;
-            lblImage=new JLabel("Click to select image",SwingConstants.CENTER); lblImage.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-            lblImage.setPreferredSize(new Dimension(200,150));
-            lblImage.addMouseListener(new MouseAdapter(){public void mouseClicked(MouseEvent e){chooseImage();}});
-            p.add(lblImage,gbc);
-
-            add(p,BorderLayout.CENTER);
-            JButton save=new JButton("Save"); save.addActionListener(e->saveCar());
-            JPanel sp=new JPanel(); sp.add(save); add(sp,BorderLayout.SOUTH);
-
-            if(car!=null){txtName.setText(car.name); txtModel.setText(car.model); txtPrice.setText(""+car.pricePerDay); txtCategory.setText(car.category);
-                cmbStatus.setSelectedItem(car.status); if(car.imagePath!=null) lblImage.setIcon(UIUtils.loadScaledIcon(car.imagePath,200,150));}
-        }
-
-        private void chooseImage(){
-            JFileChooser chooser=new JFileChooser(); chooser.setFileFilter(new FileNameExtensionFilter("Images","jpg","png","jpeg","gif"));
-            int r=chooser.showOpenDialog(this); if(r==JFileChooser.APPROVE_OPTION) selectedImage=chooser.getSelectedFile();
-            if(selectedImage!=null) lblImage.setIcon(UIUtils.loadScaledIcon(selectedImage.getAbsolutePath(),200,150));
-        }
-
-        private void saveCar(){
-            try{
-                String name=txtName.getText().trim(), model=txtModel.getText().trim(), cat=txtCategory.getText().trim();
-                double price=Double.parseDouble(txtPrice.getText().trim()); String status=(String)cmbStatus.getSelectedItem();
-                String imgPath = car!=null?car.imagePath:null;
-                if(selectedImage!=null){imgPath=UIUtils.copyImageToStore(selectedImage,(car==null?DataStore.nextCarId():car.id)+".jpg");}
-
-                if(car==null){
-                    String id=DataStore.nextCarId();
-                    DataStore.addCar(new Car(id,name,model,price,cat,status,imgPath,currentUser.id));
-                }else{
-                    car.name=name; car.model=model; car.category=cat; car.pricePerDay=price; car.status=status; car.imagePath=imgPath;
-                    DataStore.updateCar(car);
-                }
-                dispose();
-            }catch(Exception e){JOptionPane.showMessageDialog(this,"Error: "+e.getMessage());}
-        }
-    }
-
-    // ---------------- Admin Panel (User List) ----------------
+    // ---------------- Admin Panel ----------------
     public static class AdminPanel extends JPanel {
         private DefaultTableModel tableModel; private JTable table;
         public AdminPanel(MainFrame parent){
             setLayout(new BorderLayout());
             tableModel=new DefaultTableModel(new String[]{"ID","Username","Role","Contact"},0);
             table=new JTable(tableModel);
-            JScrollPane sp=new JScrollPane(table); add(sp,BorderLayout.CENTER);
-            refresh();
+            add(new JScrollPane(table),BorderLayout.CENTER);
         }
         public void refresh(){
             tableModel.setRowCount(0);
-            for(User u:DataStore.fetchUsers()){
-                tableModel.addRow(new Object[]{u.id,u.username,u.role,u.contact});
-            }
+            for(User u:DataStore.fetchUsers()) tableModel.addRow(new Object[]{u.id,u.username,u.role,u.contact});
         }
     }
 
-    // ---------------- Custom WrapLayout ----------------
+    // ---------------- Car Add/Edit Dialog ----------------
+    public static class CarDialog extends JDialog {
+        private JTextField txtName, txtModel, txtPrice, txtCategory, txtStatus;
+        private JLabel lblImage; private File selectedImageFile;
+        private Car car; private User user; private MainFrame parent;
+        public CarDialog(MainFrame parent, Car car, User user){
+            super(parent,true); this.parent=parent; this.car=car; this.user=user;
+            setTitle(car==null?"Add Car":"Edit Car"); setSize(400,500); setLocationRelativeTo(parent);
+            setLayout(new BorderLayout());
+
+            JPanel panel = new JPanel(new GridBagLayout()); panel.setBorder(new EmptyBorder(12,12,12,12));
+            GridBagConstraints gbc = new GridBagConstraints(); gbc.insets=new Insets(6,6,6,6); gbc.fill=GridBagConstraints.HORIZONTAL;
+
+            gbc.gridx=0; gbc.gridy=0; panel.add(new JLabel("Name:"),gbc); gbc.gridx=1; txtName=new JTextField(20); panel.add(txtName,gbc);
+            gbc.gridx=0; gbc.gridy=1; panel.add(new JLabel("Model:"),gbc); gbc.gridx=1; txtModel=new JTextField(20); panel.add(txtModel,gbc);
+            gbc.gridx=0; gbc.gridy=2; panel.add(new JLabel("Price/day:"),gbc); gbc.gridx=1; txtPrice=new JTextField(20); panel.add(txtPrice,gbc);
+            gbc.gridx=0; gbc.gridy=3; panel.add(new JLabel("Category:"),gbc); gbc.gridx=1; txtCategory=new JTextField(20); panel.add(txtCategory,gbc);
+            gbc.gridx=0; gbc.gridy=4; panel.add(new JLabel("Status:"),gbc); gbc.gridx=1; txtStatus=new JTextField(20); panel.add(txtStatus,gbc);
+
+            gbc.gridx=0; gbc.gridy=5; gbc.gridwidth=2;
+            lblImage=new JLabel("Click to select image",SwingConstants.CENTER);
+            lblImage.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+            lblImage.setPreferredSize(new Dimension(200,120)); panel.add(lblImage,gbc);
+            lblImage.addMouseListener(new MouseAdapter(){public void mouseClicked(MouseEvent e){chooseImage();}});
+
+            add(panel,BorderLayout.CENTER);
+
+            JButton save = new JButton("Save"); save.addActionListener(e->saveCar());
+            JPanel pbtn = new JPanel(); pbtn.add(save); add(pbtn,BorderLayout.SOUTH);
+
+            if(car!=null){
+                txtName.setText(car.name); txtModel.setText(car.model); txtPrice.setText(""+car.pricePerDay);
+                txtCategory.setText(car.category); txtStatus.setText(car.status);
+                lblImage.setIcon(UIUtils.loadScaledIcon(car.imagePath,200,120));
+            }
+        }
+
+        private void chooseImage(){
+            JFileChooser fc = new JFileChooser();
+            fc.setFileFilter(new FileNameExtensionFilter("Images","jpg","jpeg","png","gif"));
+            if(fc.showOpenDialog(this)==JFileChooser.APPROVE_OPTION) selectedImageFile=fc.getSelectedFile();
+            if(selectedImageFile!=null) lblImage.setIcon(UIUtils.loadScaledIcon(selectedImageFile.getAbsolutePath(),200,120));
+        }
+
+        private void saveCar(){
+            try{
+                String name=txtName.getText().trim(), model=txtModel.getText().trim();
+                double price=Double.parseDouble(txtPrice.getText().trim());
+                String category=txtCategory.getText().trim(), status=txtStatus.getText().trim();
+                String imgPath = car!=null?car.imagePath:null;
+                if(selectedImageFile!=null){
+                    String ext = selectedImageFile.getName().substring(selectedImageFile.getName().lastIndexOf("."));
+                    imgPath = UIUtils.copyImageToStore(selectedImageFile, DataStore.nextCarId()+ext);
+                }
+                if(car==null){
+                    Car newCar = new Car(DataStore.nextCarId(),name,model,price,category,status,imgPath,user.id);
+                    DataStore.addCar(newCar);
+                } else {
+                    car.name=name; car.model=model; car.pricePerDay=price; car.category=category; car.status=status; car.imagePath=imgPath;
+                    DataStore.updateCar(car);
+                }
+                ((DashboardPanel)parent.cardPanel.getComponent(1)).refreshAll();
+                dispose();
+            }catch(Exception e){JOptionPane.showMessageDialog(this,"Error saving car: "+e.getMessage());}
+        }
+    }
+
+    // ---------------- Main ----------------
+    public static void main(String[] args){SwingUtilities.invokeLater(()->{MainFrame f=new MainFrame(); f.setVisible(true);});}
+
+    // ---------------- WrapLayout for cards ----------------
     public static class WrapLayout extends FlowLayout{
         public WrapLayout(){super();}
         public WrapLayout(int align,int hgap,int vgap){super(align,hgap,vgap);}
@@ -387,24 +479,21 @@ public class CarRentalFull {
         public Dimension minimumLayoutSize(Container target){return layoutSize(target,false);}
         private Dimension layoutSize(Container target,boolean preferred){
             synchronized(target.getTreeLock()){
-                int hgap=getHgap(), vgap=getVgap(), maxWidth=target.getWidth()>0?target.getWidth():Integer.MAX_VALUE;
-                Insets insets=target.getInsets(); int x=0,y=insets.top+vgap,rowHeight=0,reqWidth=0;
-                for(Component c:target.getComponents()){if(!c.isVisible()) continue;
-                    Dimension d=preferred?c.getPreferredSize():c.getMinimumSize();
-                    if(x==0||x+d.width+insets.left+insets.right+hgap<=maxWidth){if(x>0)x+=hgap; x+=d.width; rowHeight=Math.max(rowHeight,d.height);}
-                    else{reqWidth=Math.max(reqWidth,x); x=d.width; y+=vgap+rowHeight; rowHeight=d.height;}
+                int maxWidth = target.getWidth();
+                if(maxWidth==0) maxWidth=Integer.MAX_VALUE;
+                int x=0,y=0,rowH=0;
+                int nmembers=target.getComponentCount();
+                for(int i=0;i<nmembers;i++){
+                    Component c=target.getComponent(i);
+                    if(c.isVisible()){
+                        Dimension d = preferred?c.getPreferredSize():c.getMinimumSize();
+                        if(x+d.width>maxWidth){ x=0; y+=rowH+getVgap(); rowH=0;}
+                        x+=d.width+getHgap(); rowH=Math.max(rowH,d.height);
+                    }
                 }
-                y+=rowHeight+vgap; return new Dimension(reqWidth+insets.left+insets.right,y);
+                y+=rowH; Insets in = target.getInsets(); y+=in.top+in.bottom;
+                return new Dimension(maxWidth,y);
             }
         }
-    }
-
-    // ---------------- Main ----------------
-    public static void main(String[] args){
-        UIUtils.ensureImagesFolder();
-        SwingUtilities.invokeLater(()->{
-            try{UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());}catch(Exception ignored){}
-            new MainFrame().setVisible(true);
-        });
     }
 }
