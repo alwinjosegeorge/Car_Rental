@@ -68,23 +68,17 @@ public class CarRentalFull {
 
         static {
             users.add(new User("U001","admin@demo","admin123","admin","Admin Office"));
-            users.add(new User("U002","user1@demo","user123","user","Customer 1"));
-            users.add(new User("U003","user2@demo","user123","user","Customer 2"));
-            users.add(new User("U004","seller1@demo","seller123","seller","+91-9876543210"));
-            users.add(new User("U005","seller2@demo","seller123","seller","+91-9876543211"));
-            users.add(new User("U006","seller3@demo","seller123","seller","+91-9876543212"));
+            users.add(new User("U002","user@demo","user123","user","Customer 1"));
+            users.add(new User("U003","user1@demo","user123","user","Customer 2"));
+            users.add(new User("U004","seller@demo","seller123","seller","+91-9876543210"));
+            users.add(new User("U005","seller1@demo","seller123","seller","+91-9876543211"));
+            users.add(new User("U006","seller2@demo","seller123","seller","+91-9876543212"));
 
             cars.add(new Car("C001","Toyota Camry","Camry",3500,"Sedan","Available","images/Toyota_Camry.jpeg","U004","Petrol",5,"Automatic"));
-            cars.add(new Car("C002","Honda Civic","Civic",3200,"Sedan","Available","images/Honda_Civic.jpeg","U004","Petrol",5,"Automatic"));
+            cars.add(new Car("C002","Honda Civic","Civic",3200,"Sedan","Available","images/Honda_Civic.jpeg","U005","Petrol",5,"Automatic"));
             cars.add(new Car("C003","BMW X5","X5",7000,"SUV","Available","images/BMW_X5.jpeg","U004","Diesel",5,"Automatic"));
-            cars.add(new Car("C004","Audi A6","A6",6500,"Sedan","Available","images/Audi_A6.jpeg","U004","Petrol",5,"Automatic"));
-            cars.add(new Car("C005","Mercedes C-Class","C200",6000,"Sedan","Available","images/Mercedes_C200.jpeg","U005","Petrol",5,"Automatic"));
-            cars.add(new Car("C006","Tesla Model 3","Model 3",8000,"Sedan","Available","images/Tesla_Model3.jpeg","U005","Electric",5,"Automatic"));
-            cars.add(new Car("C007","Ford Mustang","Mustang",7500,"Coupe","Available","images/Ford_Mustang.jpeg","U005","Petrol",4,"Manual"));
-            cars.add(new Car("C008","Jeep Wrangler","Wrangler",7200,"SUV","Available","images/Jeep_Wrangler.jpeg","U006","Diesel",5,"Manual"));
-            cars.add(new Car("C009","Kia Seltos","Seltos",3200,"SUV","Available","images/Kia_Seltos.jpeg","U006","Petrol",5,"Automatic"));
-            cars.add(new Car("C010","Hyundai Creta","Creta",3000,"SUV","Available","images/Hyundai_Creta.jpeg","U006","Petrol",5,"Automatic"));
-        }
+            cars.add(new Car("C004","Audi A6","A6",6500,"Sedan","Available","images/Audi_A6.jpeg","U006","Petrol",5,"Automatic"));
+            }
 
         public static Optional<User> authenticate(String username,String password,String role){
             return users.stream().filter(u->u.username.equalsIgnoreCase(username)&&u.password.equals(password)&&u.role.equalsIgnoreCase(role)).findFirst();
@@ -234,9 +228,9 @@ public class CarRentalFull {
             Optional<User> found = DataStore.authenticate(u,p,role);
             if(found.isPresent()){
                 String otp = JOptionPane.showInputDialog(this,
-                        "We are facing an SMS issue.\nPlease use 910296 as your OTP:",
+                        "We are facing an SMS issue.\nPlease use 910298 as your OTP:",
                         "OTP Verification", JOptionPane.INFORMATION_MESSAGE);
-                if(otp != null && otp.equals("910296")){
+                if(otp != null && otp.equals("910298")){
                     parent.showDashboard(found.get());
                     txtPass.setText("");
                 } else {
@@ -297,7 +291,6 @@ public class CarRentalFull {
             adminPanel = new AdminPanel(parent);
             add(tabs,BorderLayout.CENTER);
         }
-
         public void setUser(User user){
             this.user=user; tabs.removeAll();
             tabs.addTab("Browse Cars",browsePanel);
