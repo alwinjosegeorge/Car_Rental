@@ -3,7 +3,7 @@
    - Roles: admin, seller, user
    - Signup for user/seller
    - Booking dialog with pickup info & total price 
-   - Car features: fuelType, seats, transmission
+   - Car features: fuelType, seats, transmissions
    - Image placeholder handling
    - Auto-refresh after booking or edits
 */
