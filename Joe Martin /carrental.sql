@@ -15,7 +15,7 @@ CREATE TABLE users (
 CREATE TABLE cars (
     id VARCHAR(10) PRIMARY KEY,
     name VARCHAR(50),
-    model VARCHAR(50),
+    model VARCHAR(50), 
     price_per_day DOUBLE,
     category VARCHAR(50),
     status ENUM('Available','Rented','Sold'),
