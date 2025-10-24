@@ -2,7 +2,7 @@
    Fully functional single-file Swing Car Rental app (Enhanced)
    - Roles: admin, seller, user
    - Signup for user/seller
-   - Booking dialog with pickup info & total price
+   - Booking dialog with pickup info & total price 
    - Car features: fuelType, seats, transmission
    - Image placeholder handling
    - Auto-refresh after booking or edits
