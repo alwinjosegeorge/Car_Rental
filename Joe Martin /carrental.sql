@@ -9,7 +9,7 @@ CREATE TABLE users (
     password VARCHAR(50) NOT NULL,
     role ENUM('admin','user','seller') NOT NULL,
     contact VARCHAR(100)
-);
+); 
 
 -- Create cars table
 CREATE TABLE cars (
