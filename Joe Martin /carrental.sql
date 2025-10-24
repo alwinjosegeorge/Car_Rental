@@ -14,7 +14,7 @@ CREATE TABLE users (
 -- Create cars table
 CREATE TABLE cars (
     id VARCHAR(10) PRIMARY KEY,
-    name VARCHAR(50),
+    name VARCHAR(50), 
     model VARCHAR(50), 
     price_per_day DOUBLE,
     category VARCHAR(50),
