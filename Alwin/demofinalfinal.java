@@ -1,7 +1,7 @@
 /* CarRentalFull.java
     Fully functional single-file Swing Car Rental app (Enhanced)
     - Database: **SQLite Local File Integration** (No Internet/Firewall Needed)
-    - Features: Booking History (User), My Car Bookings (Seller), All Bookings (Admin)
+    - Features: Booking History, Booking Approval Flow (Pending/Confirmed)
 */
 
 import javax.imageio.ImageIO;
@@ -49,8 +49,11 @@ public class CarRentalFull {
     public static class Booking{
         public String id, carId, userId, pickupPlace, pickupDate, pickupTime;
         public int days; public double totalPrice;
-        public Booking(String id,String carId,String userId,String place,String date,String time,int days,double total){
+        public String status; // Pending, Confirmed, Rejected
+        
+        public Booking(String id,String carId,String userId,String place,String date,String time,int days,double total, String status){
             this.id=id; this.carId=carId; this.userId=userId; this.pickupPlace=place; this.pickupDate=date; this.pickupTime=time; this.days=days; this.totalPrice=total;
+            this.status = status;
         }
     }
 
@@ -63,7 +66,7 @@ public class CarRentalFull {
 
         static {
             try {
-                // 🛑 CORRECT DRIVER LOAD
+                // Load the correct SQLite driver
                 Class.forName("org.sqlite.JDBC"); 
                 connection = DriverManager.getConnection(JDBC_URL); 
                 System.out.println("SQLite Database connected successfully (carrental.db).");
@@ -87,7 +90,8 @@ public class CarRentalFull {
             Statement stmt = connection.createStatement();
             stmt.execute("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, role TEXT NOT NULL, contact TEXT)");
             stmt.execute("CREATE TABLE IF NOT EXISTS cars (id TEXT PRIMARY KEY, name TEXT NOT NULL, model TEXT, price_per_day REAL NOT NULL, category TEXT, status TEXT, image_path TEXT, owner_id TEXT, fuel_type TEXT, seats INTEGER, transmission TEXT)");
-            stmt.execute("CREATE TABLE IF NOT EXISTS bookings (id TEXT PRIMARY KEY, car_id TEXT, user_id TEXT, pickup_place TEXT, pickup_date TEXT, pickup_time TEXT, days INTEGER, total_price REAL)");
+            // UPDATED BOOKINGS TABLE TO INCLUDE STATUS
+            stmt.execute("CREATE TABLE IF NOT EXISTS bookings (id TEXT PRIMARY KEY, car_id TEXT, user_id TEXT, pickup_place TEXT, pickup_date TEXT, pickup_time TEXT, days INTEGER, total_price REAL, status TEXT DEFAULT 'Pending')");
             stmt.close();
         }
 
@@ -142,7 +146,7 @@ public class CarRentalFull {
         private static Booking mapBooking(ResultSet rs) throws SQLException {
             return new Booking(rs.getString("id"), rs.getString("car_id"), rs.getString("user_id"), 
                 rs.getString("pickup_place"), rs.getString("pickup_date"), rs.getString("pickup_time"),
-                rs.getInt("days"), rs.getDouble("total_price"));
+                rs.getInt("days"), rs.getDouble("total_price"), rs.getString("status")); 
         }
 
         // --- CRUD and AUTH Operations ---
@@ -192,6 +196,18 @@ public class CarRentalFull {
             } catch (SQLException e) { e.printStackTrace(); } return bookings;
         }
 
+        public static void updateBookingStatus(String bookingId, String newStatus) {
+            String sql = "UPDATE bookings SET status = ? WHERE id = ?";
+            try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+                pstmt.setString(1, newStatus);
+                pstmt.setString(2, bookingId);
+                pstmt.executeUpdate();
+            } catch (SQLException e) { 
+                e.printStackTrace(); 
+                JOptionPane.showMessageDialog(null, "DB Error: Could not update booking status.", "DB Write Error", JOptionPane.ERROR_MESSAGE); 
+            }
+        }
+
         public static void addCar(Car c) {
             String sql = "INSERT INTO cars (id, name, model, price_per_day, category, status, image_path, owner_id, fuel_type, seats, transmission) VALUES (?,?,?,?,?,?,?,?,?,?,?)";
             try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
@@ -208,7 +224,7 @@ public class CarRentalFull {
             } catch (SQLException e) { e.printStackTrace(); JOptionPane.showMessageDialog(null, "DB Error: Could not add user.", "DB Write Error", JOptionPane.ERROR_MESSAGE); }
         }
         public static void addBooking(Booking b) {
-            String sql = "INSERT INTO bookings (id, car_id, user_id, pickup_place, pickup_date, pickup_time, days, total_price) VALUES (?,?,?,?,?,?,?,?)";
+            String sql = "INSERT INTO bookings (id, car_id, user_id, pickup_place, pickup_date, pickup_time, days, total_price, status) VALUES (?,?,?,?,?,?,?,?, 'Pending')";
             try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
                 pstmt.setString(1, b.id); pstmt.setString(2, b.carId); pstmt.setString(3, b.userId);
                 pstmt.setString(4, b.pickupPlace); pstmt.setString(5, b.pickupDate); pstmt.setString(6, b.pickupTime);
@@ -262,7 +278,7 @@ public class CarRentalFull {
             return target.toString().replace("\\","/");
         }
 
-        public static ImageIcon loadScaledIcon(String imagePath,int w,int h){
+        public static ImageIcon loadScaledIcon(String imagePath,int w, int h){
             if(imagePath==null || !new File(imagePath).exists()) imagePath=PLACEHOLDER_IMAGE;
             try{
                 BufferedImage img = ImageIO.read(new File(imagePath));
@@ -411,6 +427,7 @@ public class CarRentalFull {
         private AdminPanel adminPanel;
         private BookingHistoryPanel historyPanel; 
         private AllBookingsPanel allBookingsPanel; // New Admin/Seller View
+        private User currentUser; // The current user logged in
 
         public DashboardPanel(MainFrame parent){
             this.parent=parent;
@@ -434,7 +451,9 @@ public class CarRentalFull {
             add(tabs,BorderLayout.CENTER);
         }
         public void setUser(User user){
-            this.user=user; tabs.removeAll();
+            this.user=user; 
+            this.currentUser = user; // Set the class member here
+            tabs.removeAll();
             tabs.addTab("Browse Cars",browsePanel);
             
             // User-specific history view
@@ -447,6 +466,7 @@ public class CarRentalFull {
                 case "seller": 
                     tabs.addTab("My Inventory",sellerPanel); 
                     tabs.addTab("Car Bookings", allBookingsPanel); // Seller uses this view to track *their* car bookings
+                    checkPendingBookings(); // Alert seller upon login/refresh
                     break;
                 case "admin": 
                     tabs.addTab("Manage Cars",sellerPanel); 
@@ -468,6 +488,31 @@ public class CarRentalFull {
             allBookingsPanel.refresh();
             if(user!=null && user.role.equals("user")) {
                 historyPanel.refresh(); 
+            }
+        }
+        
+        // FIX: Removed 'this.' keyword for correct instance access
+        private void checkPendingBookings() {
+            if (currentUser == null) return; 
+            
+            int pendingCount = 0;
+            String sellerId = currentUser.id;
+            
+            List<Booking> allBookings = DataStore.fetchBookings();
+            
+            for (Booking b : allBookings) {
+                Car car = DataStore.findCarById(b.carId);
+                // Check if the car belongs to the current seller, and if the booking is pending
+                if (car != null && car.ownerId.equals(sellerId) && b.status.equals("Pending")) {
+                    pendingCount++;
+                }
+            }
+            
+            if (pendingCount > 0) {
+                JOptionPane.showMessageDialog(this, 
+                    "<html>You have <b>" + pendingCount + " pending booking(s)</b> that require approval!</html>", 
+                    "New Booking Alert", JOptionPane.INFORMATION_MESSAGE);
+                tabs.setSelectedIndex(tabs.indexOfTab("Car Bookings")); // Switch to the approval tab
             }
         }
     }
@@ -582,7 +627,7 @@ public class CarRentalFull {
                 bookBtn.addActionListener(e -> {
                     BookingDialog bd = new BookingDialog(parent, c, currentUser);
                     bd.setVisible(true);
-                    // REMOVED DUPLICATE REFRESH CALL HERE (It is in the dialog)
+                    // refreshAll happens inside the dialog confirmation!
                 });
                 info.add(bookBtn);
             }
@@ -648,8 +693,8 @@ public class CarRentalFull {
         confirm.addActionListener(e->{
             int days = (Integer)spinDays.getValue();
             double total = car.pricePerDay*days;
-            car.status="Rented";
-            DataStore.updateCar(car);
+            
+            // Booking status set to pending
             DataStore.addBooking(new Booking(
                 DataStore.nextBookingId(),
                 car.id,
@@ -658,11 +703,12 @@ public class CarRentalFull {
                 txtDate.getText().trim(),
                 txtTime.getText().trim(),
                 days,
-                total
+                total,
+                "Pending" // Status set to pending
             ));
-            JOptionPane.showMessageDialog(this,"Booked successfully!\nTotal: ₹"+UIUtils.MONEY.format(total));
+            JOptionPane.showMessageDialog(this,"Booking sent for approval!","Pending Approval",JOptionPane.INFORMATION_MESSAGE);
             dispose();
-            parent.refreshAll(); // The refresh happens cleanly AFTER dispose()
+            parent.refreshAll(); 
         });
         add(confirm,gbc);
     }
@@ -678,7 +724,7 @@ public class CarRentalFull {
             add(header,BorderLayout.NORTH);
 
             model = new DefaultTableModel(new String[]{"ID","Name","Model","Price/Day","Status","Fuel","Seats","Transmission"},0){
-                public boolean isCellEditable(int row,int col){return false;}
+                public boolean isCellEditable(int r, int c){return false;} 
             };
             tbl = new JTable(model);
             add(new JScrollPane(tbl),BorderLayout.CENTER);
@@ -768,7 +814,7 @@ public class CarRentalFull {
 
         private void deleteCar(Car car){
             if(car!=null && currentUser.role.equals("seller") && !car.ownerId.equals(currentUser.id)){
-                JOptionPane.showMessageDialog(this,"You cannot delete this car.","Permission Denied",JOptionPane.WARNING_MESSAGE);
+                JOptionPane.showMessageDialog(this,"You cannot edit this car.","Permission Denied",JOptionPane.WARNING_MESSAGE);
                 return;
             }
             int ans = JOptionPane.showConfirmDialog(this,"Delete car "+car.name+"?","Confirm",JOptionPane.YES_NO_OPTION);
@@ -784,7 +830,7 @@ public class CarRentalFull {
             setLayout(new BorderLayout());
             JLabel header = UIUtils.makeHeader("Registered Users"); add(header,BorderLayout.NORTH);
             model = new DefaultTableModel(new String[]{"ID","Username","Role","Contact"},0){
-                public boolean isCellEditable(int r,int c){return false;}
+                public boolean isCellEditable(int r, int c){return false;} 
             };
             tbl = new JTable(model); add(new JScrollPane(tbl),BorderLayout.CENTER);
         }
@@ -810,7 +856,7 @@ public class CarRentalFull {
             JLabel header = UIUtils.makeHeader("My Booking History");
             add(header,BorderLayout.NORTH);
 
-            model = new DefaultTableModel(new String[]{"Booking ID", "Car", "Days", "Pickup Place", "Date", "Time", "Total Price (₹)"}, 0){
+            model = new DefaultTableModel(new String[]{"Booking ID", "Car", "Days", "Status", "Pickup Place", "Date", "Time", "Total Price (₹)"}, 0){
                 public boolean isCellEditable(int row,int col){return false;}
             };
             tbl = new JTable(model);
@@ -823,7 +869,6 @@ public class CarRentalFull {
             model.setRowCount(0);
             if(currentUser == null) return;
             
-            // Fetch bookings specific to the current user (standard user view)
             List<Booking> bookings = DataStore.fetchBookingsByUserId(currentUser.id);
             
             for(Booking b : bookings){
@@ -834,45 +879,120 @@ public class CarRentalFull {
                 model.addRow(new Object[]{
                     b.id, 
                     carName, 
-                    b.days, 
+                    b.days,
+                    b.status, // Show status here
                     b.pickupPlace, 
                     b.pickupDate, 
                     b.pickupTime, 
                     totalPrice
                 });
             }
+            model.fireTableDataChanged();
         }
     }
     
     // NEW ADMIN/SELLER VIEW FOR ALL BOOKINGS (Filtered by role)
     public static class AllBookingsPanel extends JPanel {
+        private MainFrame parent;
         private User currentUser;
         private JTable tbl; 
         private DefaultTableModel model;
+        private JButton btnApprove;
+        private JButton btnReject;
+        private int selectedRow = -1;
 
         public AllBookingsPanel(MainFrame parent){
+            this.parent = parent;
             setLayout(new BorderLayout());
-            tbl = new JTable(); // Initialize JTable with default constructor
-            JScrollPane scrollPane = new JScrollPane(tbl);
-            add(scrollPane, BorderLayout.CENTER);
+            
+            model = new DefaultTableModel(); // Initialize here, headers set in refresh()
+            tbl = new JTable(model); 
+
+            // Control Panel for Approval/Rejection
+            btnApprove = new JButton("Approve");
+            btnReject = new JButton("Reject");
+            
+            btnApprove.addActionListener(e -> handleBookingAction("Confirmed"));
+            btnReject.addActionListener(e -> handleBookingAction("Rejected"));
+            
+            JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            controlPanel.add(btnApprove);
+            controlPanel.add(btnReject);
+
+            tbl.getSelectionModel().addListSelectionListener(e -> {
+                if (!e.getValueIsAdjusting() && tbl.getSelectedRow() != -1) {
+                    selectedRow = tbl.convertRowIndexToModel(tbl.getSelectedRow());
+                    updateControlButtons();
+                }
+            });
+
+            add(controlPanel, BorderLayout.SOUTH);
+            add(new JScrollPane(tbl), BorderLayout.CENTER);
         }
 
         public void setCurrentUser(User u){this.currentUser=u; refresh();}
+        
+        private void updateControlButtons() {
+            if (selectedRow >= 0 && model.getColumnCount() > 0) {
+                // Status is the 3rd column (index 2) in the data structure
+                Object statusValue = model.getValueAt(selectedRow, 2); 
+                boolean isPending = "Pending".equals(statusValue);
+                
+                // Only show buttons for Sellers if the booking is Pending
+                if (currentUser.role.equals("seller")) {
+                    btnApprove.setVisible(true);
+                    btnReject.setVisible(true);
+                    btnApprove.setEnabled(isPending);
+                    btnReject.setEnabled(isPending);
+                } else { // Admin (buttons hidden, view only)
+                    btnApprove.setVisible(false);
+                    btnReject.setVisible(false);
+                }
+            } else {
+                btnApprove.setEnabled(false);
+                btnReject.setEnabled(false);
+                if (currentUser!=null && !currentUser.role.equals("admin")) { // Hide buttons if nothing is selected and not admin
+                    btnApprove.setVisible(false);
+                    btnReject.setVisible(false);
+                }
+            }
+        }
+        
+        private void handleBookingAction(String action) {
+            if (selectedRow < 0) return;
+            
+            String bookingId = (String)model.getValueAt(selectedRow, 0);
+            String carId = (String)model.getValueAt(selectedRow, 1); // Car ID is the 2nd column (index 1)
+
+            // 1. Update Booking Status in DB
+            DataStore.updateBookingStatus(bookingId, action);
+            
+            // 2. If Confirmed, update Car Status to Rented
+            if (action.equals("Confirmed")) {
+                Car currentCar = DataStore.findCarById(carId); 
+                if (currentCar != null) {
+                    currentCar.status = "Rented";
+                    DataStore.updateCar(currentCar);
+                }
+            }
+            
+            JOptionPane.showMessageDialog(this, "Booking " + bookingId + " has been " + action.toLowerCase() + ".", "Action Complete", JOptionPane.INFORMATION_MESSAGE);
+            parent.refreshAll();
+        }
 
         public void refresh(){
             if(currentUser == null) return;
             
-            // 1. Re-initialize model based on current user role for correct column headers
-            if (currentUser.role.equals("admin")) {
-                model = new DefaultTableModel(new String[]{"Booking ID", "Car Name", "Buyer", "Owner Contact", "Days", "Total Price (₹)"}, 0);
-                add(UIUtils.makeHeader("All System Bookings"), BorderLayout.NORTH);
-            } else { // Seller View
-                model = new DefaultTableModel(new String[]{"Booking ID", "Car Name", "Buyer", "Buyer Contact", "Days", "Total Price (₹)"}, 0);
-                add(UIUtils.makeHeader("Bookings for My Cars"), BorderLayout.NORTH);
-            }
+            // 1. Define Headers: Status is the 3rd column (index 2)
+            String[] headers = currentUser.role.equals("admin") 
+                ? new String[]{"Booking ID", "Car ID", "Status", "Buyer", "Owner Contact", "Date", "Time", "Days", "Total Price (₹)"}
+                : new String[]{"Booking ID", "Car ID", "Status", "Buyer", "Buyer Contact", "Date", "Time", "Days", "Total Price (₹)"};
+            
+            model = new DefaultTableModel(headers, 0);
             tbl.setModel(model);
             
-            // 2. Fetch all bookings
+            add(UIUtils.makeHeader(currentUser.role.equals("admin") ? "All System Bookings" : "Bookings for My Cars"), BorderLayout.NORTH);
+            
             List<Booking> allBookings = DataStore.fetchBookings(); 
             
             for(Booking b : allBookings){
@@ -880,7 +1000,7 @@ public class CarRentalFull {
                 User buyer = DataStore.findUserById(b.userId);
                 User owner = (car != null) ? DataStore.findUserById(car.ownerId) : null;
                 
-                // 3. SELLER FILTER: Only show bookings for cars they own
+                // SELLER FILTER: Only show bookings for cars they own
                 if (currentUser.role.equals("seller") && (car == null || !car.ownerId.equals(currentUser.id))) {
                     continue; 
                 }
@@ -889,19 +1009,21 @@ public class CarRentalFull {
                 String buyerName = (buyer != null) ? buyer.username : "Unknown Buyer";
                 String buyerContact = (buyer != null) ? buyer.contact : "N/A";
                 String ownerContact = (owner != null) ? owner.contact : "N/A";
-
+                
                 Object[] rowData;
+                // Note: We use car.id for the table column data, which is index 1.
                 if (currentUser.role.equals("admin")) {
                     rowData = new Object[]{
-                        b.id, carName, buyerName, ownerContact, b.days, "₹" + UIUtils.MONEY.format(b.totalPrice)
+                        b.id, car.id, b.status, buyerName, ownerContact, b.pickupDate, b.pickupTime, b.days, "₹" + UIUtils.MONEY.format(b.totalPrice)
                     };
                 } else { // Seller
                     rowData = new Object[]{
-                        b.id, carName, buyerName, buyerContact, b.days, "₹" + UIUtils.MONEY.format(b.totalPrice)
+                        b.id, car.id, b.status, buyerName, buyerContact, b.pickupDate, b.pickupTime, b.days, "₹" + UIUtils.MONEY.format(b.totalPrice)
                     };
                 }
                 model.addRow(rowData);
             }
+            updateControlButtons();
             model.fireTableDataChanged();
             revalidate();
             repaint();
